@@ -4,6 +4,7 @@
 (require racket/cmdline)
 (require racket/string)
 (require racket/port)
+(require math/statistics)
 
 (struct infinitive (word regular?))
 (struct result (success? elapsed-time))
@@ -59,11 +60,22 @@
       (unless (system* stty "raw" "-echo" "opost")
         (error "Could not set the stty settings to raw")))
     (lambda ()
-      (map (lambda (inf-form) (test-single (car inf-form) (cdr inf-form)))
-           (take (shuffle
-                  (map (lambda (l) (cons (first l) (second l)))
-                       (cartesian-product (append inf-reg inf-irreg)
-                                          forms))) (trials))))
+      (let ([results
+             (map (lambda (inf-form) (test-single (car inf-form) (cdr inf-form)))
+                  (take (shuffle
+                         (map (lambda (l) (cons (first l) (second l)))
+                              (cartesian-product (append inf-reg inf-irreg)
+                                                 forms))) (trials)))])
+        (displayln (format "Average time: ~s sec"
+                           (round (exact->inexact
+                                   (mean (map (lambda (r) (result-elapsed-time r))
+                                              results))))))
+        (let ([num-correct (length (filter (lambda (r) (result-success? r)) results))])
+          (displayln (format "Correct: ~s  Incorrect: ~s:  ~s%"
+                            num-correct
+                            (- (length results) num-correct)
+                            (round (exact->inexact
+                                    (* 100 (/ num-correct (length results))))))))))
     (lambda ()
       (unless (system* stty starting-stty)
         (error "Could not reset the stty settings")))))
