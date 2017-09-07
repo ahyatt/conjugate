@@ -19,7 +19,10 @@
 (define (test-single inf form)
   (let ([begin-sec (current-seconds)])
     (displayln (string-replace form "#"
-                             (format "[~a]" (infinitive-word inf))))
+                               (format "[~a]"
+                                       (string-append (infinitive-word inf)
+                                                      (if (infinitive-regular? inf)
+                                                          "" "*")))))
     (let ([success? (not (char=? (read-char) #\x))]
           [elapsed-time (- (current-seconds) begin-sec)])
       (if success?
@@ -41,7 +44,9 @@
                       lang))
 
 (define inf-reg (load-file (format "infinitives-reg-~a" lang) #t))
-(define inf-irreg (when use-irregulars (load-file (format "infinitives-irreg-~a" lang) #f)))
+(define inf-irreg (if (use-irregulars)
+                      (load-file (format "infinitives-irreg-~a" lang) #f)
+                      '()))
 (define forms (with-input-from-file
                 (format "forms-~a" lang)
                 (lambda () (string-split
