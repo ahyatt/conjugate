@@ -23,8 +23,11 @@
                                        (string-append (infinitive-word inf)
                                                       (if (infinitive-regular? inf)
                                                           "" "*")))))
-    (let ([success? (not (char=? (read-char) #\x))]
-          [elapsed-time (- (current-seconds) begin-sec)])
+    (let* ([input (read-char)]
+           [success? (not (char=? input #\x))]
+           [elapsed-time (- (current-seconds) begin-sec)])
+      (when (or (char-iso-control? input) (eof-object? input))
+            (exit))
       (if success?
           (displayln (format "Succeeded in ~a seconds" elapsed-time))
           (displayln "Failed :("))
@@ -32,14 +35,19 @@
 
 (define use-irregulars (make-parameter #t))
 (define trials (make-parameter 10))
+(define metronome-secs (make-parameter #f))
 
 (define lang (command-line
                       #:once-each
                       [("-r" "--regulars-only")
                        "Use only regular verbs" (use-irregulars #f)]
                       [("-t" "--trials") num-trials
-                                         "Run <trials> number of trials"
+                                         "Trial mode: run <trials> number of trials"
                                          (trials (string->number num-trials))]
+                      [("-m" "--metronome")
+                       metronome-secs-str
+                       "Metronome mode: new word every <metronome> seconds"
+                       (metronome-secs (string->number metronome-secs-str))]
                       #:args (lang)
                       lang))
 
@@ -51,6 +59,18 @@
                 (format "forms-~a" lang)
                 (lambda () (string-split
                             (port->string) #px"\n"))))
+
+(define (metronome-test trials metronome-secs)
+ (let ([results '()])
+   (for/list ([trial trials])
+     (unless (sync/timeout metronome-secs
+                          (thread
+                           (lambda ()
+                             (set! results (append
+                                            (list (test-single (car trial) (cdr trial)))
+                                            results)))))
+       (set! results (append (list (result #f metronome-secs))))))
+   results))
 
 (file-stream-buffer-mode (current-input-port) 'none)
 (let* ([stty (find-executable-path "stty")]
@@ -65,12 +85,16 @@
       (unless (system* stty "raw" "-echo" "opost")
         (error "Could not set the stty settings to raw")))
     (lambda ()
-      (let ([results
-             (map (lambda (inf-form) (test-single (car inf-form) (cdr inf-form)))
-                  (take (shuffle
-                         (map (lambda (l) (cons (first l) (second l)))
-                              (cartesian-product (append inf-reg inf-irreg)
-                                                 forms))) (trials)))])
+      (let* ([trial-data
+              (shuffle
+               (map (lambda (l) (cons (first l) (second l)))
+                    (cartesian-product (append inf-reg inf-irreg)
+                                       forms)))]
+             [results
+              (if (metronome-secs)
+                  (metronome-test trial-data (metronome-secs))
+                  (map (lambda (inf-form) (test-single (car inf-form) (cdr inf-form)))
+                       (take trial-data (trials))))])
         (displayln (format "Average time: ~s sec"
                            (round (exact->inexact
                                    (mean (map (lambda (r) (result-elapsed-time r))
